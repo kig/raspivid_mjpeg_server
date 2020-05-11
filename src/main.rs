@@ -103,7 +103,7 @@ async fn run_server(addr: SocketAddr, current_frame: Arc<Frame>) {
 
 #[tokio::main]
 async fn main() {
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8554));
 
     let mut reader = BufReader::new(tokio::io::stdin());
     let current_frame = Arc::new(Frame{frame: RwLock::new(FrameBuffer{ buffer: Vec::new(), number: 0 }) });
