@@ -63,7 +63,7 @@ impl Stream for FrameStream {
         self.last_frame_number = last_frame_number;
         match result {
             Poll::Pending => {
-                std::thread::sleep(Duration::from_millis(10));
+                std::thread::sleep(Duration::from_millis(1));
                 cx.waker().wake_by_ref()
             },
             _ => ()
