@@ -84,7 +84,7 @@ async fn main() {
                 Ok(0) => { panic!("EOF") },
                 // JPEG starts with 0xFF 0xD8 0xFF.
                 Ok(_n) => jpeg.len() > 2 && jpeg[jpeg.len()-3] == 0xFF && jpeg[jpeg.len()-2] == 0xD8,
-                Err(error) => { panic!("error: {}", error) },
+                Err(error) => { panic!("IO error: {}", error) },
             };
         }
         // Keep the last three bytes of jpeg, making jpeg == 0xFF 0xD8 0xFF.
@@ -101,24 +101,16 @@ async fn main() {
 
             if b == 0xD9 { // End of image marker.
                 break;
-            } else if b == 0xDA { // Start of Scan
-                if inside_scan {
-                    println!("Start of Scan inside scan {}", b);
-                    valid_jpeg = false;
-                    break;
-                }
-                inside_scan = true;
-                // Find the next marker.
-                reader.read_until(0xFF, &mut jpeg).unwrap();
-            } else if inside_scan {
-                if b != 0x00 && (b < 0xD0 || b > 0xD7) { // Only escaped 0xFF or a stream reset marker allowed.
-                    println!("Byte stuffing or scan reset outside scan {}", b);
+            } else if b == 0x00 || (b >= 0xD0 && b <= 0xD7) { // Escaped 0xFF or scan reset marker.
+                if !inside_scan {
+                    println!("0xFF escape or scan reset outside scan data {}", b);
                     valid_jpeg = false;
                     break;
                 }
                 // Find the next marker.
                 reader.read_until(0xFF, &mut jpeg).unwrap();
             } else if b >= 0xC0 && b <= 0xFE { // Marker with length. Read the length and the content.
+                inside_scan = b == 0xDA; // Start of Scan.
                 reader.read_exact(&mut len_buf).unwrap();
                 let len:usize = (len_buf[0] as usize * 256) + (len_buf[1] as usize) - 2;
                 jpeg.extend_from_slice(&len_buf.as_slice());
@@ -127,9 +119,13 @@ async fn main() {
                 jpeg.extend_from_slice(&data_buf.as_slice());
                 let end = data_buf[len];
                 if end != 0xFF { // Markers must be followed by markers.
-                    println!("Marker not followed by marker {}", end);
-                    valid_jpeg = false;
-                    break;
+                    if inside_scan { // Unless we are inside compressed image data.
+                        reader.read_until(0xFF, &mut jpeg).unwrap();
+                    } else {
+                        println!("Marker not followed by marker {}", end);
+                        valid_jpeg = false;
+                        break;
+                    }
                 }
             } else { // Invalid marker.
                 println!("Invalid marker {}", b);
