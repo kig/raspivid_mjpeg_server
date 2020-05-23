@@ -82,7 +82,7 @@ async fn main() {
             // Read until the next potential image start marker. This strips out the MJPEG headers in raspivid output.
             in_jpeg = match reader.read_until(0xFF, &mut jpeg) {
                 Ok(0) => { panic!("EOF") },
-                // JPEG starts with 0xF 0xD8 0xFF.
+                // JPEG starts with 0xFF 0xD8 0xFF.
                 Ok(_n) => jpeg.len() > 2 && jpeg[jpeg.len()-3] == 0xFF && jpeg[jpeg.len()-2] == 0xD8,
                 Err(error) => { panic!("error: {}", error) },
             };
@@ -91,6 +91,8 @@ async fn main() {
         jpeg = jpeg[jpeg.len()-3..].to_vec();
 
         // Read the rest of the JPEG image data, block by block.
+        let mut valid_jpeg = true;
+        let mut inside_scan = false;
         loop {
             // Get the marker byte.
             reader.read_exact(&mut byt).unwrap();
@@ -99,34 +101,56 @@ async fn main() {
 
             if b == 0xD9 { // End of image marker.
                 break;
-            } else if b == 0x00 || (b >= 0xD0 && b <= 0xD7) { // Escaped 0xFF or a stream reset marker.
-                // FIXME Assert that these only happen inside the compressed image stream block (0xDA).
-            } else { // Marker with length. Read the length and the content.
-                // FIXME Assert that the marker is a valid JPEG marker.
+            } else if b == 0xDA { // Start of Scan
+                if inside_scan {
+                    println!("Start of Scan inside scan {}", b);
+                    valid_jpeg = false;
+                    break;
+                }
+                inside_scan = true;
+                // Find the next marker.
+                reader.read_until(0xFF, &mut jpeg).unwrap();
+            } else if inside_scan {
+                if b != 0x00 && (b < 0xD0 || b > 0xD7) { // Only escaped 0xFF or a stream reset marker allowed.
+                    println!("Byte stuffing or scan reset outside scan {}", b);
+                    valid_jpeg = false;
+                    break;
+                }
+                // Find the next marker.
+                reader.read_until(0xFF, &mut jpeg).unwrap();
+            } else if b >= 0xC0 && b <= 0xFE { // Marker with length. Read the length and the content.
                 reader.read_exact(&mut len_buf).unwrap();
                 let len:usize = (len_buf[0] as usize * 256) + (len_buf[1] as usize) - 2;
                 jpeg.extend_from_slice(&len_buf.as_slice());
-                data_buf.resize(len, 0);
+                data_buf.resize(len+1, 0);
                 reader.read_exact(&mut data_buf).unwrap();
                 jpeg.extend_from_slice(&data_buf.as_slice());
-                // FIXME Assert that the next byte is 0xFF.
+                let end = data_buf[len];
+                if end != 0xFF { // Markers must be followed by markers.
+                    println!("Marker not followed by marker {}", end);
+                    valid_jpeg = false;
+                    break;
+                }
+            } else { // Invalid marker.
+                println!("Invalid marker {}", b);
+                valid_jpeg = false;
+                break;
             }
-
-            // Find the next marker.
-            reader.read_until(0xFF, &mut jpeg).unwrap();
         }
-        // FIXME Don't send invalid JPEG images when spotted above.
 
-        output_buffer.clear();
-        // Write the MJPEG header to the output_buffer, followed by the JPEG data.
-        output_buffer.extend_from_slice(&HEAD);
-        output_buffer.extend_from_slice(&jpeg.len().to_string().as_bytes());
-        output_buffer.extend_from_slice(&RNRN);
-        output_buffer.extend_from_slice(&jpeg.as_slice());
-        
-        // Send the output_buffer to all the open client responses.
-        match tx.broadcast(output_buffer.clone()) {
-            _ => ()
+        // Send valid JPEGs to clients.
+        if valid_jpeg {
+            output_buffer.clear();
+            // Write the MJPEG header to the output_buffer, followed by the JPEG data.
+            output_buffer.extend_from_slice(&HEAD);
+            output_buffer.extend_from_slice(&jpeg.len().to_string().as_bytes());
+            output_buffer.extend_from_slice(&RNRN);
+            output_buffer.extend_from_slice(&jpeg.as_slice());
+            
+            // Send the output_buffer to all the open client responses.
+            match tx.broadcast(output_buffer.clone()) {
+                _ => ()
+            }
         }
     }
 }
