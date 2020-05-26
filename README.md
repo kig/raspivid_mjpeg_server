@@ -45,9 +45,11 @@ sudo cp target/release/raspivid_mjpeg_server /usr/local/bin
 raspivid -ISO 0 -t 0 -n -o - -w 640 -h 480 -fps 90 -b 25000000 -cd MJPEG | raspivid_mjpeg_streamer
 ```
 
-# It's laggy!? (My network latency is 0.2 ms, the camera shutter is 8 ms, my screen refresh is 4 ms, how does that add up to 60 ms?)
+# Pipeline latency handwaving
 
-The timestamp-to-screenshot pipeline is roughly:
+Q: My network latency is 0.2 ms, the camera shutter is 8 ms, my screen refresh is 4 ms, how does that add up to 60 ms?
+
+A: The timestamp-to-screenshot pipeline is roughly:
 
 1. <b>Update application picture (< 1 screen frame, depends on application)</b>
     1. The clock program gets the current time.
@@ -91,13 +93,102 @@ The timestamp-to-screenshot pipeline is roughly:
     1. The compositor tells the GPU that it has a new screen frame.
     1. You grab a screenshot and it has the current timestamp picture and the image picture received from the camera.
 
-If you go with double-buffered latencies: timestamp-to-application takes 1 frame, displaying application takes 1 frame, jpeg-to-application takes 1 frame, displaying image application takes 1 frame, for a total of 4 frames of latency. Then camera latency of 1 camera frame. With a 60Hz display and a 50Hz camera, that's 87 ms. Add in 30 ms of display response time and we're at 117 ms (plus network and image pipeline). With 240 Hz display, 90 Hz camera, and 12 ms display response, the timestamp-to-screenshot latency would be 40 ms. Scanline-chasing (timestamp has zero delay, image has 1 frame delay) on a 160 Hz CRT and a 200 Hz camera: 12 ms.
+If you go with double-buffered latencies: timestamp-to-application takes 1 frame, displaying application takes 1 frames, jpeg-to-application takes 1 frame, displaying image application takes 1 frames, for a total of 4 frames of latency. Then camera latency of 1 camera frame. With a 60Hz display and a 50Hz camera, that's 87 ms. With 240 Hz display and 90 Hz camera, the timestamp-to-screenshot latency would be 28 ms. Add in 10 ms WiFi latency and 16 ms frame transfer time, and the 60 Hz system is at 113 ms and the 240 Hz system is at 54 ms.
 
-Camera-to-screen latencies would be one camera frame, two screen frames and display response time. For the above setups, 60/50: 83 ms, 240/90: 32 ms, 160/200 CRT: 12 ms.
+## Network latency
 
-WiFi one-way latency with not-so-great signal can be 5-10 ms with spikes of tens of ms. With a better signal you can get the latency down to 1-2 ms. On Ethernet, latencies are from tens to low hundreds of microseconds and down.
+WiFi one-way latency with not-so-great signal can be 5-10 ms with spikes of tens of ms. With a better signal you can get the latency down to 1-2 ms. On Ethernet, latencies are from tens to low hundreds of microseconds and down. With 200 Gb HDR InfiniBand you could potentially reach ~12 microsecond frame transfer times for 30 kB frames.
 
-If you want lower camera-to-screen latency, the easiest improvement is getting a 240Hz display and setting the camera FPS as high as you can. After that, get a better WiFi antenna / base station or switch to a wired connection. Try to get rid of double buffering. Optimize your JPEG decoder. Hack the camera-to-streamer-to-viewer system to send data chunks as soon as they arrive instead of waiting for end of frame. Make the rolling shutter send 8 scanline chunks. Hack your display to immediately display 8 scanline chunks instead of full framebuffers. Directly drive your display from an FPGA with a wireless receiver. Ditto with the camera. Remove the camera sensor and display hardware, add a few lenses, galvos and a ground glass screen to build an optical image relay system.
+## Camera-to-display latency
+
+Camera-to-photons latencies would be one camera frame, two screen frames and display response time. For the above setups, 60/50 with 30 ms display response time: 83 ms, 240/90 with 12 ms DRT: 32 ms, 160 Hz CRT with a 200 Hz camera and zero DRT: 12 ms.
+
+OLED display response is in the 1-2 ms range, so if you can find an OLED with a high refresh rate and low image processing delay, that can be good too. Samsung's QLED displays are in the low-single-digit milliseconds as well.
+
+## Camera-to-processing latency
+
+Camera to processing latencies are primarily driven by camera frame rate and network latency. Crank up the camera FPS, optimize your network and process the latest camera frame. Here's a table of theoretical latency figures for 30 kB frames.
+
+<table>
+<tr>
+    <th>Camera FPS</th>
+    <th>Network latency</th>
+    <th>Network bandwidth</th>
+    <th>Minimum response time</th>
+</tr>
+<tr>
+    <td>30</td>
+    <td>100 ms</td>
+    <td>5 Mbps</td>
+    <td>182 ms</td>
+</tr>
+<tr>
+    <td>30</td>
+    <td>10 ms</td>
+    <td>20 Mbps</td>
+    <td>55 ms</td>
+</tr>
+<tr>
+    <td>60</td>
+    <td>10 ms</td>
+    <td>20 Mbps</td>
+    <td>39 ms</td>
+</tr>
+<tr>
+    <td>90</td>
+    <td>10 ms</td>
+    <td>20 Mbps</td>
+    <td>34 ms</td>
+</tr>
+<tr>
+    <td>200</td>
+    <td>10 ms</td>
+    <td>20 Mbps</td>
+    <td>28 ms</td>
+</tr>
+<tr>
+    <td>30</td>
+    <td>1 ms</td>
+    <td>100 Mbps</td>
+    <td>36 ms</td>
+</tr>
+<tr>
+    <td>60</td>
+    <td>1 ms</td>
+    <td>100 Mbps</td>
+    <td>20 ms</td>
+</tr>
+<tr>
+    <td>90</td>
+    <td>1 ms</td>
+    <td>100 Mbps</td>
+    <td>16 ms</td>
+</tr>
+<tr>
+    <td>200</td>
+    <td>1 ms</td>
+    <td>100 Mbps</td>
+    <td>9 ms</td>
+</tr>
+<tr>
+    <td>1 000</td>
+    <td>0.05 ms</td>
+    <td>1 Gbps</td>
+    <td>1.5 ms</td>
+</tr>
+<tr>
+    <td>12 600</td>
+    <td>600 ns</td>
+    <td>200 Gbps</td>
+    <td>0.085 ms</td>
+</tr>
+</table>
+
+## How to get lower latency?
+
+If you want lower camera-to-screen latency, the easiest improvement is getting a 240Hz display and setting the camera FPS as high as you can. After that, get a better WiFi antenna / base station or switch to a wired connection. Try to get rid of double buffering. Optimize your JPEG decoder. Hack the camera-to-streamer-to-viewer system to send data chunks as soon as they arrive instead of waiting for end of frame. Make the rolling shutter send 8 scanline chunks. Hack your display to immediately display 8 scanline chunks instead of full framebuffers. Directly drive your display from an FPGA with a wireless receiver. Ditto with the camera. Make the camera expose and stream out randomly placed 8x8 blocks and display them immediately. Remove the camera sensor and display hardware, add a few lenses, galvos and a ground glass screen to build an optical image relay system.
+
+The more processing you do per frame, the more UI lag you have. If you're running a 6 FPS CPU pose detector on a 30 Hz camera stream, it will have a minimum of 200 ms latency (and require a lot of smoothing/prediction to make it feel fluid). Switch to a 60 FPS detector and you'll get it down to 50 ms latency. 200 FPS YOLO detector and 200 Hz camera stream would have you at 10 ms latency. 
 
 Madness aside, you could try streaming raspiraw over GigE and running the Bayer-to-pixels conversion on the receiving end GPU. This could potentially get you 640x64 at 660 FPS with ~4 ms photons-to-GPU latency (1.5 ms exposure, 1.5 ms transfer, 1 ms for fooling around).
 
