@@ -45,6 +45,10 @@ sudo cp target/release/raspivid_mjpeg_server /usr/local/bin
 raspivid -ISO 0 -t 0 -n -o - -w 640 -h 480 -fps 90 -b 25000000 -cd MJPEG | raspivid_mjpeg_streamer
 ```
 
+# How to get lower latency?
+
+If you want lower camera-to-screen latency, the easiest improvement is getting a 240Hz display and setting the camera FPS as high as you can. After that, get a better WiFi antenna / base station or switch to a wired connection. Try to get rid of double buffering. 
+
 # Pipeline latency handwaving
 
 Q: My network latency is 0.2 ms, the camera shutter is 8 ms, my screen refresh is 4 ms, how does that add up to 60 ms?
@@ -93,7 +97,7 @@ A: The timestamp-to-screenshot pipeline is roughly:
     1. The compositor tells the GPU that it has a new screen frame.
     1. You grab a screenshot and it has the current timestamp picture and the image picture received from the camera.
 
-If you go with double-buffered latencies: timestamp-to-application takes 1 frame, displaying application takes 1 frames, jpeg-to-application takes 1 frame, displaying image application takes 1 frames, for a total of 4 frames of latency. Then camera latency of 1 camera frame. With a 60Hz display and a 50Hz camera, that's 87 ms. With 240 Hz display and 90 Hz camera, the timestamp-to-screenshot latency would be 28 ms. Add in 10 ms WiFi latency and 16 ms frame transfer time, and the 60 Hz system is at 113 ms and the 240 Hz system is at 54 ms.
+If you go with double-buffered latencies: timestamp-to-application takes 1 frame, displaying application takes 1 frames, jpeg-to-application takes 1 frame, displaying image application takes 1 frames, for a total of 4 frames of latency. For the display to change the frame takes 30 ms on a 60 Hz IPS screen, 12 ms on a 240 Hz screen. Then camera latency of 1 camera frame. With a 60Hz display and a 50Hz camera, that's 87 ms + 30 ms display response time. With 240 Hz display and 90 Hz camera, the timestamp-to-screenshot latency would be 28 ms + 12 ms DRT. Add in 10 ms WiFi latency and 16 ms frame transfer time, and the 60 Hz system is at 113 ms + 30 ms DRT and the 240 Hz system is at 54 ms + 12 ms DRT.
 
 ## Network latency
 
@@ -104,6 +108,10 @@ WiFi one-way latency with not-so-great signal can be 5-10 ms with spikes of tens
 Camera-to-photons latencies would be one camera frame, two screen frames and display response time. For the above setups, 60/50 with 30 ms display response time: 83 ms, 240/90 with 12 ms DRT: 32 ms, 160 Hz CRT with a 200 Hz camera and zero DRT: 12 ms.
 
 OLED display response is in the 1-2 ms range, so if you can find an OLED with a high refresh rate and low image processing delay, that can be good too. Samsung's QLED displays are in the low-single-digit milliseconds as well.
+
+## Processing latency
+
+The more processing you do per frame, the more UI lag you have. If you're running a 6 FPS CPU pose detector on a 30 Hz camera stream, it will have a minimum of 200 ms latency (and require a lot of smoothing/prediction to make it feel fluid). Switch to a 60 FPS detector and you'll get it down to 50 ms latency. 200 FPS YOLO detector and 200 Hz camera stream would have you at 10 ms latency. 
 
 ## Camera-to-processing latency
 
@@ -184,15 +192,23 @@ Camera to processing latencies are primarily driven by camera frame rate and net
 </tr>
 </table>
 
-## How to get lower latency?
+## Codec latency
 
-If you want lower camera-to-screen latency, the easiest improvement is getting a 240Hz display and setting the camera FPS as high as you can. After that, get a better WiFi antenna / base station or switch to a wired connection. Try to get rid of double buffering. Optimize your JPEG decoder. Hack the camera-to-streamer-to-viewer system to send data chunks as soon as they arrive instead of waiting for end of frame. Make the rolling shutter send 8 scanline chunks. Hack your display to immediately display 8 scanline chunks instead of full framebuffers. Directly drive your display from an FPGA with a wireless receiver. Ditto with the camera. Make the camera expose and stream out randomly placed 8x8 blocks and display them immediately. Remove the camera sensor and display hardware, add a few lenses, galvos and a ground glass screen to build an optical image relay system.
+H.264 is not necessarily any worse than MJPEG in terms of latency, as long as you don't have B-frames (decoding a B-frame requires frames before and _after_ the B-frame). Hardware H.264 encoders shouldn't add much latency in Basic Profile (no B-frames). The main issue with H.264 is that decoder software likes to buffer a second of video stream before starting to decode it. H.264 requires a solid stream of data because decoding P-frames depends on the preceding frames (so if you've got a missing bits, your video will be corrupted until you hit the next I-frame). You can try watching an RTSP stream from a Basic Profile IP camera with `mplayer -benchmark` and it'll be quite low latency. Watch out for video corruption though!
 
-The more processing you do per frame, the more UI lag you have. If you're running a 6 FPS CPU pose detector on a 30 Hz camera stream, it will have a minimum of 200 ms latency (and require a lot of smoothing/prediction to make it feel fluid). Switch to a 60 FPS detector and you'll get it down to 50 ms latency. 200 FPS YOLO detector and 200 Hz camera stream would have you at 10 ms latency. 
+To limit the corruption blast radius, you can reduce the I-frame interval. I-frames are full frames that don't need other frames to decode. This will increase the required bandwidth.
 
-Madness aside, you could try streaming raspiraw over GigE and running the Bayer-to-pixels conversion on the receiving end GPU. This could potentially get you 640x64 at 660 FPS with ~4 ms photons-to-GPU latency (1.5 ms exposure, 1.5 ms transfer, 1 ms for fooling around).
+Latency of H.264 comes in two varieties: I-frame latency and P-frame latency. I-frames are full frames, so the transfer latency is higher. P-frames are small partial data frames, so the transfer latency is lower as well.
 
-## License
+With MJPEG, every frame is an I-frame. This requires more bandwidth, but whatever missing data video corruption you encounter has a blast radius limited to the frames with missing data.
+
+## Even lower latency? 
+
+Optimize your JPEG encoder and decoder. Hack the camera-to-streamer-to-viewer system to send data chunks as soon as they arrive instead of waiting for end of frame. If using H.264, allow the receiver request a new I-frame when hitting missing packets. Make the rolling shutter send 8 scanline chunks. Hack your display to immediately display 8 scanline chunks instead of full framebuffers. Directly drive your display from an FPGA with a wireless receiver. Ditto with the camera. Make the camera expose and stream out randomly placed 8x8 blocks and display them immediately. Remove the camera sensor and display hardware, add a few lenses, galvos and a ground glass screen to build an optical image relay system.
+
+Madness aside, you could try [streaming `raspiraw` from the v2 camera](https://www.raspberrypi.org/forums/viewtopic.php?f=43&t=212518&p=1310445) over Raspberry Pi 4's gigabit Ethernet and running the [Bayer-to-pixels conversion](https://github.com/6by9/dcraw) on the receiving end GPU. This could potentially get you 640x75 at 1007 FPS with ~2 ms photons-to-GPU latency (1 ms exposure, 0.4 ms transfer, 0.6 ms for fooling around).
+
+## Licensei
 
 MIT
 
