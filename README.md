@@ -4,7 +4,7 @@ Low-latency video stream from Raspberry Pi to do remote OpenCV processing.
 
 ![Screen-to-screen latency](https://github.com/kig/raspivid_mjpeg_server/raw/master/images/latency.jpg)
 
-Screen-to-screen latency with 50 FPS camera, 60Hz screen and Chrome as viewer is about 120ms over WiFi. Camera-to-OpenCV latency might be 30-60 ms lower (how would you measure?)
+Screen-to-screen latency with 50 FPS camera, 60Hz screen and Chrome as viewer is about 120ms over WiFi. Camera-to-OpenCV latency might be 30-60 ms lower. Measure by using an OpenCV app to display a timestamp, point the camera to it, and use the OpenCV app to save the image from the camera along with timestamp.
 
 With 240Hz screen on Win10 Chrome and Raspberry Pi 3 v1 camera set to 120 FPS, the screen-to-screen latency is around 60 ms.
 
@@ -33,10 +33,6 @@ raspivid -ISO 0 -t 0 -n -o - -w 640 -h 480 -fps 90 -b 25000000 -cd MJPEG | cargo
 raspivid -md 7 -ex off -ss 4000 -ag 2 -dg 1 -awbg 1.5,1.2 -awb off -t 0 -n -o - -w 640 -h 480 -fps 200 -b 25000000 -cd MJPEG | cargo run --release
 ```
 
-This is a quick replacement for VLC MJPEG streaming `| cvlc stream:///dev/stdin --sout '#standard{access=http{mime=multipart/x-mixed-replace;boundary=--7b3cc56e5f51db803f790dad720ed50a},mux=mpjpeg,dst=:8554/video.mjpg}` (and/or Python Flask streaming server).
-
-Memory usage is low at 2.3 MB, but climbs with concurrent connection count as tokio can't free allocated slabs. The memory usage was 20.3 MB after `wrk -c 1000 -d 15 -t 300 http://localhost:8554/video.mjpg`
-
 ## Install
 
 ```sh
@@ -44,6 +40,35 @@ cargo build --release
 sudo cp target/release/raspivid_mjpeg_server /usr/local/bin
 raspivid -ISO 0 -t 0 -n -o - -w 640 -h 480 -fps 90 -b 25000000 -cd MJPEG | raspivid_mjpeg_streamer
 ```
+
+## Advanced usage
+
+```
+raspivid_mjpeg_server 0.2.0
+
+USAGE:
+    raspivid_mjpeg_server [OPTIONS]
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+OPTIONS:
+    -d, --delay <delay>      Delay in microseconds between frames read from files [default: 16000]
+    -f, --file <filename>    Read frame filenames from the given file and loop over them. 
+                             Use `-` to read from STDIN.
+                             Set the frame rate with --delay
+    -p, --port <port>        Listen for HTTP connections on this port [default: 8554]
+```
+
+
+## Notes
+
+This is a quick replacement for VLC MJPEG streaming `| cvlc stream:///dev/stdin --sout '#standard{access=http{mime=multipart/x-mixed-replace;boundary=--7b3cc56e5f51db803f790dad720ed50a},mux=mpjpeg,dst=:8554/video.mjpg}` (and/or Python Flask streaming server).
+
+Memory usage is low at 2.3 MB, but may climb with concurrent connection count. The memory usage was 20.3 MB after `wrk -c 1000 -d 15 -t 300 http://localhost:8554/video.mjpg`
+
+CPU usage is ~2% on a RPi 3B+, which is slightly higher than `mjpg-streamer`.
 
 # How to get lower latency?
 
