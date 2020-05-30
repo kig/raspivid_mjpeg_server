@@ -13,9 +13,9 @@ This is decent for e.g. driving an RC car from first-person view and some gestur
 ## Usage
 
 ```sh
- # Install Rust if needed
- curl https://sh.rustup.rs -sSf | sh
-. ~/cargo/env 
+# Install Rust if needed
+curl https://sh.rustup.rs -sSf | sh
+. ~/.cargo/env 
 
 # Clone the repo and start the server
 git clone https://github.com/kig/raspivid_mjpeg_server
