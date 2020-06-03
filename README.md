@@ -233,7 +233,7 @@ Optimize your JPEG encoder and decoder. Hack the camera-to-streamer-to-viewer sy
 
 Madness aside, you could try [streaming `raspiraw` from the v2 camera](https://www.raspberrypi.org/forums/viewtopic.php?f=43&t=212518&p=1310445) over Raspberry Pi 4's gigabit Ethernet and running the [Bayer-to-pixels conversion](https://github.com/6by9/dcraw) on the receiving end GPU. This could potentially get you 640x75 at 1007 FPS with ~2 ms photons-to-GPU latency (1 ms exposure, 0.4 ms transfer, 0.6 ms for fooling around).
 
-## Licensei
+## License
 
 MIT
 
