@@ -52,7 +52,7 @@ cargo build --release
 sudo cp target/release/raspivid_mjpeg_server /usr/local/bin
 
 # Test that it works
-raspivid -ISO 0 -t 0 -n -o - -w 640 -h 480 -fps 90 -b 25000000 -cd MJPEG | raspivid_mjpeg_streamer
+raspivid -ISO 0 -t 0 -n -o - -w 640 -h 480 -fps 90 -b 25000000 -cd MJPEG | raspivid_mjpeg_server
 ```
 
 ## Advanced usage
