@@ -31,6 +31,18 @@ raspivid -ISO 0 -t 0 -n -o - -w 640 -h 480 -fps 90 -b 25000000 -cd MJPEG | cargo
 
 # For higher FPS on v2 camera (untested!)
 raspivid -md 7 -ex off -ss 4000 -ag 2 -dg 1 -awbg 1.5,1.2 -awb off -t 0 -n -o - -w 640 -h 480 -fps 200 -b 25000000 -cd MJPEG | cargo run --release
+
+# You don't need raspivid (or even a Raspberry Pi) if your webcam supports MJPEG
+v4l2-ctl -v pixelformat=MJPG --stream-mmap --stream-to - | cargo run --release
+
+# You don't even need MJPEG if you have ffmpeg (better have some CPU to burn though)
+v4l2-ctl -v pixelformat=YUVY,width=640,height=480 -p 30 && v4l2-ctl --stream-mmap --stream-to - | \
+ffmpeg -f rawvideo -pix_fmt yuyv422 -video_size 640x480 -framerate 30 -i - -f mjpeg - | \
+cargo run --release
+
+# Or v4l2-ctl
+ffmpeg -framerate 30 -f avfoundation -i "default" -f mjpeg -q:v 3 - | cargo run --release
+
 ```
 
 ## Install
@@ -38,6 +50,8 @@ raspivid -md 7 -ex off -ss 4000 -ag 2 -dg 1 -awbg 1.5,1.2 -awb off -t 0 -n -o - 
 ```sh
 cargo build --release
 sudo cp target/release/raspivid_mjpeg_server /usr/local/bin
+
+# Test that it works
 raspivid -ISO 0 -t 0 -n -o - -w 640 -h 480 -fps 90 -b 25000000 -cd MJPEG | raspivid_mjpeg_streamer
 ```
 
