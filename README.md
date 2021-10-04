@@ -99,7 +99,7 @@ A: The timestamp-to-screenshot pipeline is roughly:
     1. The clock program creates a picture of the timestamp.
     1. The timestamp picture is composited onto the application picture.
     1. The application says it's frame time and tells the compositor to use the new application picture.
-1. <b>Update screen frame (could be 1-3 screen frames depending on double/triple buffering)</b>
+1. <b>Update screen frame (could be 1-2 screen frames depending on buffering)</b>
     1. The compositor composites the screen frame from the application pictures it has at hand.
     1. The compositor tells the GPU that it has a new screen frame.
 1. <b>Display the screen frame (screen frame + display response time (could be anywhere from 2-50+ ms))</b>
@@ -136,7 +136,7 @@ A: The timestamp-to-screenshot pipeline is roughly:
     1. The compositor tells the GPU that it has a new screen frame.
     1. You grab a screenshot and it has the current timestamp picture and the image picture received from the camera.
 
-If you go with double-buffered latencies: timestamp-to-application takes 1 frame, displaying application takes 1 frames, jpeg-to-application takes 1 frame, displaying image application takes 1 frames, for a total of 4 frames of latency. For the display to change the frame takes 30 ms on a 60 Hz IPS screen, 12 ms on a 240 Hz screen. Then camera latency of 1 camera frame. With a 60Hz display and a 50Hz camera, that's 87 ms + 30 ms display response time. With 240 Hz display and 90 Hz camera, the timestamp-to-screenshot latency would be 28 ms + 12 ms DRT. Add in 10 ms WiFi latency and 16 ms frame transfer time, and the 60 Hz system is at 113 ms + 30 ms DRT and the 240 Hz system is at 54 ms + 12 ms DRT.
+If you go with double-buffered latencies: timestamp-to-application takes 1 frame, displaying application takes 1 frame, jpeg-to-application takes 1 frame, displaying image application takes 1 frame, for a total of 4 frames of latency. For the display to change the frame takes 30 ms on a 60 Hz IPS screen, 12 ms on a 240 Hz screen. Then camera latency of 1 camera frame. With a 60Hz display and a 50Hz camera, that's 20 ms camera latency + 67 ms application latency + 30 ms display response time for a total of 117 ms. With 240 Hz display and 90 Hz camera, the timestamp-to-screenshot latency would be 11 ms camera + 17 ms application + 12 ms display for a total of 40 ms. Add in 10 ms WiFi latency and 10 ms frame transfer time and the 60 Hz system is at 137 ms and the 240 Hz system is at 60 ms.
 
 ## Network latency
 
@@ -237,7 +237,7 @@ H.264 is not necessarily any worse than MJPEG in terms of latency, as long as yo
 
 To limit the corruption blast radius, you can reduce the I-frame interval. I-frames are full frames that don't need other frames to decode. This will increase the required bandwidth.
 
-Latency of H.264 comes in two varieties: I-frame latency and P-frame latency. I-frames are full frames, so the transfer latency is higher. P-frames are small partial data frames, so the transfer latency is lower as well.
+Network transfer latency of H.264 comes in two varieties: I-frame latency and P-frame latency. I-frames are full frames, so the transfer latency is higher. P-frames are small partial data frames, so the transfer latency is lower as well. If you have a reliable but bandwidth-limited network (e.g. multiple 4k IP cams on a 100 Mbps PoE switch), decreasing the bitrate can meaningfully decrease latency without running into video corruption issues.
 
 With MJPEG, every frame is an I-frame. This requires more bandwidth, but whatever missing data video corruption you encounter has a blast radius limited to the frames with missing data.
 
