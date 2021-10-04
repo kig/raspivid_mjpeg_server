@@ -40,9 +40,11 @@ v4l2-ctl -v pixelformat=YUVY,width=640,height=480 -p 30 && v4l2-ctl --stream-mma
 ffmpeg -f rawvideo -pix_fmt yuyv422 -video_size 640x480 -framerate 30 -i - -f mjpeg - | \
 cargo run --release
 
-# Or v4l2-ctl
+# Or on OS X
 ffmpeg -framerate 30 -f avfoundation -i "default" -f mjpeg -q:v 3 - | cargo run --release
 
+# Or Windows (untested)
+ffmpeg -f dshow -video_size 1280x720 -framerate 30 -vcodec mjpeg -i video="Integrated Camera" -f mjpeg -vcodec copy - | cargo run --release
 ```
 
 ## Install
