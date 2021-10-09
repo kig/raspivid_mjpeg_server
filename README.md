@@ -10,6 +10,16 @@ With 240Hz screen on Win10 Chrome and Raspberry Pi 3 v1 camera set to 120 FPS, t
 
 This is decent for e.g. driving an RC car from first-person view and some gestural interfaces.
 
+## Why should I use this?
+
+The mjpeg_server was designed for use in long-running (weeks/months) pose tracking games, with pose tracking done on a remote PC with an OpenCV video pipeline, so it does things a bit differently from most video streamers.
+
+ * No transcoding, which gives you minimal CPU and memory usage. Being written in Rust helps here too.
+ * Sanitizes the incoming MJPEG stream by parsing out the JPEG images and wrapping them into the HTTP MJPEG transport in a way that works reliably with OpenCV (cvlc & pass-through streamers often make OpenCV's VideoCapture randomly choke).
+ * Tries to send out the latest received frame instead of every frame to keep the OpenCV VideoCapture latency low, even if you write single-threaded code. I should probably add a polling mode where you have to send an ACK reply to receive the next frame.
+
+The second use I had for it was driving a <a href="https://github.com/kig/rpi-car-control/"FPV RC car</a> from a browser window over WiFi (well, I had a 3G dongle for properly remote operations too.)
+
 ## Usage
 
 ```sh
